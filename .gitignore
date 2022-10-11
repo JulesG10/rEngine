@@ -1,0 +1,8 @@
+/.vs/*
+/x64/*
+/Debug/*
+/Release/*
+/rEngine/x64/*
+/rEngine/Release/*
+/rEngine/Debug/*
+/rEngine/assets/models/*
