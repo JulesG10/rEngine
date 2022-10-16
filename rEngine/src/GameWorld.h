@@ -22,10 +22,17 @@ public:
 	void  Load() override;
 	void  Unload() override;
 	void  UpdateFrame() override;
+	void  PreFrame();
 
 private:
 	void DrawSkyBox();
 	void DrawDebugStats();
+
+
+	void Inputs();
+	void ModeFPS(Vector3 pos);
+	void ModeTPS(Vector3 pos);
+	Vector3 GetPlayerHead(bool add = true);
 
 	RenderTexture* render;
 	Model sky = {0};
@@ -37,6 +44,11 @@ private:
 	Model playerBox = { 0 };
 	rEntityBody playerBody = nullptr;
 	bool playerGravity = false;
+	BoundingBox playerBounding;
+	float playerScale = 0.5f;
+	RenderTexture playerGun;
+	Camera3D playerCam;
+	Model gun;
 
 	Vector3 velocity = { 0 };
 	rCameraMode mode = rCameraMode::ThirdPerson;

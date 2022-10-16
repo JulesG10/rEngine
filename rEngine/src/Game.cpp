@@ -45,6 +45,7 @@ void Game::UpdateFrame()
     }
 #endif // _DEBUG
 
+    this->world.PreFrame();
     BeginTextureMode(this->render);
     ClearBackground(WHITE);
     this->world.UpdateFrame();

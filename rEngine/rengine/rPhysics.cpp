@@ -162,7 +162,7 @@ rEntityBody rPhysics::AddEntity(btConvexInternalShape* shape, float mass, Vector
     btRigidBody* body = new btRigidBody(cInfo);
     body->setUserIndex(-1);
     
-    if (mass != 0)
+    if (mass != 0 && !shape->isConcave())
     {
         body->getCollisionShape()->calculateLocalInertia(btScalar(mass), intertia);
     }
@@ -219,21 +219,26 @@ btConvexInternalShape* rPhysics::GetShapeFromMesh(Model model, float scale)
     return (btConvexInternalShape*)new btBvhTriangleMeshShape(triangles, true);
 }
 
+btConvexInternalShape* rPhysics::GetShapeHullFromMesh(Model model, float scale)
+{
+    return (btConvexInternalShape*)new btShapeHull(this->GetShapeFromMesh(model, scale));
+}
+
 Mesh rPhysics::GetMeshFromShape(btConvexInternalShape* shape, float scale)
 {
+    Mesh mesh = Mesh();
     if (!shape->isConvex())
     {
-        return Mesh();
+        return mesh;
     }
 
     btShapeHull* hull = new btShapeHull((btConvexShape*)shape);
     hull->buildHull(shape->getMargin());
     if (!(hull->numTriangles() > 0))
     {
-        return Mesh();
+        return mesh;
     }
 
-    Mesh mesh = { 0 };
     mesh.vertexCount = hull->numTriangles() * 3;
     mesh.triangleCount = hull->numTriangles();
 
@@ -241,13 +246,14 @@ Mesh rPhysics::GetMeshFromShape(btConvexInternalShape* shape, float scale)
     mesh.texcoords = (float*)MemAlloc(mesh.vertexCount * 2 * sizeof(float));
     mesh.normals = (float*)MemAlloc(mesh.vertexCount * 3 * sizeof(float));
 
+
     int currentVertice = 0;
     int index = 0;
 
     const unsigned int* idx = hull->getIndexPointer();
     const btVector3* vtx = hull->getVertexPointer();
 
-    for (int i = 0; i < hull->numTriangles(); i++) 
+    for (int i = 0; i < hull->numTriangles(); i++)
     {
         int i1 = index++;
         int i2 = index++;
@@ -288,6 +294,7 @@ Mesh rPhysics::GetMeshFromShape(btConvexInternalShape* shape, float scale)
 
         currentVertice += 9;
     }
+
 
     UploadMesh(&mesh, false);
     return mesh;

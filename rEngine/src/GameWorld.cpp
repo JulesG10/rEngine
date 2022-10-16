@@ -14,15 +14,28 @@ void GameWorld::Load()
     this->camera.Init({ 0 }, { 0 }, 90.0f);
     this->physics.Init({ 0, -9.81, 0 });//, collisionCallback);
 
+    this->playerCam = {
+        {0.318f,0.183,0.134},
+        {-0.681,0.167,0.140},
+        {0,1,0},
+        90.0f,
+        CAMERA_PERSPECTIVE
+    };
+
+    this->playerGun = LoadRenderTexture(this->render->texture.width, this->render->texture.height);
+    this->gun = LoadModel("./assets/models/gun/model.obj");
+
+    this->player = LoadModel("./assets/models/man/Man.obj");
     
     btCapsuleShape* playerShape = new btCapsuleShape(1, 3);
     this->playerBox = LoadModelFromMesh(this->physics.GetMeshFromShape(playerShape));
-
-    this->player = LoadModel("./assets/models/man/Man.obj");
     this->playerBody = this->physics.AddEntity(playerShape, 10.f, { 0, 100, 0 });
-    
-    GameWorldObject playerObj = { GameWorldObjectType::PLAYER,  0 };
-    this->playerBody->setUserPointer(&playerObj);
+    this->playerBounding = GetModelBoundingBox(this->player);
+
+    //GameWorldObject playerObj = { GameWorldObjectType::PLAYER,  0 };
+    //this->playerBody->setUserPointer(&playerObj);
+
+
 
     
     //Texture2D texture = LoadTextureFromImage(GenImageWhiteNoise(100, 100, 0.2563f));
@@ -41,8 +54,8 @@ void GameWorld::Load()
 
     this->floorBody = this->physics.AddEntity(this->physics.GetShapeFromMesh(this->floor, 1.f), 0.f, { -floorSize.x/2, 0, -floorSize.z/2});
 
-    GameWorldObject floorObj = { GameWorldObjectType::FLOOR,  0 };
-    this->floorBody->setUserPointer(&floorObj);
+    //GameWorldObject floorObj = { GameWorldObjectType::FLOOR,  0 };
+    //this->floorBody->setUserPointer(&floorObj);
 
     this->sky = LoadModelFromMesh(GenMeshCube(1.f, 1.f, 1.f));
 
@@ -62,74 +75,30 @@ void GameWorld::Unload()
     this->physics.Close();
 }
 
+void GameWorld::PreFrame()
+{
+    BeginTextureMode(this->playerGun);
+    ClearBackground(BLANK);
+    BeginMode3D(this->playerCam);
+    DrawModel(this->gun, { 0 }, 1.f, WHITE);
+    EndMode3D();
+    EndTextureMode();
+}
+
 void GameWorld::UpdateFrame()
 {
     this->physics.Update();
+    this->Inputs();
 
-    velocity = Vector3Multiply(velocity, { 0.9f,0.9f ,0.9f });
-    float speed = 1.f;
-    if (IsKeyDown(32)) // space
-    {
-        speed *= 3;
-    }
-
-    if (IsKeyDown(87)) // front/back
-    {
-        velocity.x += speed;
-    }
-    else if (IsKeyDown(83))
-    {
-        velocity.x -= speed;
-    }
-
-    if (IsKeyDown(68)) // right/left
-    {
-        velocity.z += speed;
-
-    }
-    else if (IsKeyDown(65))
-    {
-        velocity.z -= speed;
-    }
-
-    if (IsKeyDown(82)) // up/down
-    {
-        velocity.y += speed;
-    }
-    else if (IsKeyDown(70))
-    {
-        velocity.y -= speed;
-    }
-
-    float scale = 0.5f;
-    BoundingBox playerBounding = GetModelBoundingBox(this->player);
-    float diff = (playerBounding.max.y - playerBounding.min.y) * scale;
-
-    btVector3 origin = this->playerBody->getWorldTransform().getOrigin();
-    Vector3 originPos = { origin.getX(), origin.getY() + diff / 2.f, origin.getZ() };
-
+    Vector3 playerHead = this->GetPlayerHead();
     if (mode == rCameraMode::ThirdPerson)
     {
-        this->camera.camera.target = originPos;
-        this->camera.UpdateThird({ 0 });
-
-        if (this->camera.targetDistance < 2)
-        {
-            mode = rCameraMode::FirstPerson;
-            this->camera.SwitchUpdate(mode);
-        }
+        this->ModeTPS(playerHead);
     }
     else {
-        this->camera.camera.position = originPos;
-        this->camera.UpdateFirst({ 0 });
-
-        if (this->camera.targetDistance >= 2)
-        {
-            mode = rCameraMode::ThirdPerson;
-            this->camera.SwitchUpdate(mode);
-        }
+        this->ModeFPS(playerHead);
     }
-
+    
     
     if ((abs(velocity.x) > 0.1f || abs(velocity.y) > 0.1f || abs(velocity.z) > 0.1f))
     {
@@ -151,19 +120,10 @@ void GameWorld::UpdateFrame()
         if (this->physics.CheckAABB(this->floorBody, this->playerBody))
         {
             this->playerGravity = true;
-            this->playerBody->setGravity({ 0,-400,0 });
-        }
-    }
-    /*if (!this->playerGravity)
-    {
-        GameWorldObject* plptr = static_cast<GameWorldObject*>(this->playerBody->getUserPointer());
-        if (plptr != nullptr && plptr->hit >= 1)
-        {
-            this->playerGravity = true;
             this->playerBody->setGravity({ 0,-100,0 });
         }
-    }*/
-   
+    }
+
     
 
     BeginMode3D(this->camera.camera);
@@ -174,7 +134,7 @@ void GameWorld::UpdateFrame()
     {
      
         this->player.transform = MatrixRotateXYZ({ 0, this->camera.rotation.x, 0 });
-        DrawModel(this->player, { playerTransform.m12, playerTransform.m13 - diff / 2, playerTransform.m14 }, scale, WHITE);
+        DrawModel(this->player, this->GetPlayerHead(false), this->playerScale, WHITE);
 
 
         this->playerBox.transform = this->physics.GetTransform(this->playerBody, true, this->physics.step * 10);
@@ -188,34 +148,38 @@ void GameWorld::UpdateFrame()
     this->floor.transform = this->physics.GetTransform(this->floorBody);
     DrawModel(this->floor, { 0 }, 1.f, WHITE);
 
-    static RayCollision rayCol;
 
+    
+#ifdef _DEBUG
+    static RayCollision rayCol;
     Vector2 crossPosition = { this->render->texture.width / 2.f, (this->render->texture.height / 2.f) - 200 };
-    Vector3 playerHeadPos = { playerTransform.m12, playerTransform.m13 + diff / 2, playerTransform.m14 };
     if (IsKeyPressed(72))//H
     {
         Ray ray = GetMouseRay(crossPosition, this->camera.camera);
         rayCol = GetRayCollisionMesh(ray, this->floor.meshes[0], this->floor.transform);
     }
     DrawLine3D(
-        playerHeadPos,
+        playerHead,
         rayCol.point,
         GREEN);
+#endif // _DEBUG
 
-    //DrawLine3D({0,0,0}, {0,100,0}, GREEN);
-    //DrawLine3D({ 0,0,0 }, { 100,0,0 }, RED);
-    //DrawLine3D({ 0,0,0 }, { 0,0,100 }, BLUE);
-    //DrawGrid(10, 1.0f);
-
+   
     EndMode3D();
-    
-    DrawText(StrStats("Distance", Vector3Distance(playerHeadPos, rayCol.point)).c_str(), crossPosition.x + 20, crossPosition.y, 10, BLACK);
+   
+    if (mode == rCameraMode::FirstPerson)
+    {
+        DrawTexturePro(this->playerGun.texture, { 0, 0,  (float)this->render->texture.width, -(float)this->render->texture.height }, {0, 0, (float)this->render->texture.width, (float)this->render->texture.height}, {0, 0}, 0, WHITE);
+    }
+
+    DrawText(StrStats("Distance", Vector3Distance(playerHead, rayCol.point)).c_str(), crossPosition.x + 20, crossPosition.y, 10, BLACK);
     DrawCircle(crossPosition.x, crossPosition.y, 2, RED);
 
 #ifdef _DEBUG
     this->DrawDebugStats();
 #endif // _DEBUG
 }
+
 
 void GameWorld::DrawSkyBox()
 {
@@ -272,7 +236,90 @@ void GameWorld::DrawDebugStats()
 }
 
 
+
+void GameWorld::Inputs()
+{
+    velocity = Vector3Multiply(velocity, { 0.9f,0.9f ,0.9f });
+    float speed = 1.f;
+    if (IsKeyDown(32)) // space
+    {
+        speed *= 3;
+    }
+
+    if (IsKeyDown(87)) // front/back
+    {
+        velocity.x += speed;
+    }
+    else if (IsKeyDown(83))
+    {
+        velocity.x -= speed;
+    }
+
+    if (IsKeyDown(68)) // right/left
+    {
+        velocity.z += speed;
+
+    }
+    else if (IsKeyDown(65))
+    {
+        velocity.z -= speed;
+    }
+
+    if (IsKeyDown(82)) // up/down
+    {
+        velocity.y += speed;
+    }
+    else if (IsKeyDown(70))
+    {
+        velocity.y -= speed;
+    }
+}
+
+void GameWorld::ModeFPS(Vector3 pos)
+{
+    this->camera.camera.position = pos;
+    this->camera.UpdateFirst({ 0 });
+
+    if (this->camera.targetDistance >= 2)
+    {
+        mode = rCameraMode::ThirdPerson;
+        this->camera.SwitchUpdate(mode);
+    }
+}
+
+void GameWorld::ModeTPS(Vector3 pos)
+{
+    this->camera.camera.target = pos;
+    this->camera.UpdateThird({ 0 });
+
+    if (this->camera.targetDistance < 2)
+    {
+        mode = rCameraMode::FirstPerson;
+        this->camera.SwitchUpdate(mode);
+    }
+}
+
+Vector3 GameWorld::GetPlayerHead(bool add)
+{
+    float diff = (playerBounding.max.y - playerBounding.min.y) * this->playerScale;
+    diff = add ? diff : -diff;
+
+    btVector3 origin = this->playerBody->getWorldTransform().getOrigin();
+    return { origin.getX(), origin.getY() + diff / 2.f, origin.getZ() };
+}
+
+
 /*
+if (!this->playerGravity)
+    {
+        GameWorldObject* plptr = static_cast<GameWorldObject*>(this->playerBody->getUserPointer());
+        if (plptr != nullptr && plptr->hit >= 1)
+        {
+            this->playerGravity = true;
+            this->playerBody->setGravity({ 0,-100,0 });
+        }
+}
+
 bool collisionCallback(btManifoldPoint& cp, const btCollisionObjectWrapper* obj0, int partId0, int index0, const btCollisionObjectWrapper* obj1, int partId1, int index1)
 {
     GameWorldObject* obj0ptr = static_cast<GameWorldObject*>(obj0->getCollisionObject()->getUserPointer());

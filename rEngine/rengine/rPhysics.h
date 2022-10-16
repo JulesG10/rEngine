@@ -19,6 +19,7 @@ public:
 	void RemoveEntity(rEntityBody);
 
 	btConvexInternalShape* GetShapeFromMesh(Model model, float scale = 1.f);
+	btConvexInternalShape* GetShapeHullFromMesh(Model model, float scale = 1.f);
 	Mesh GetMeshFromShape(btConvexInternalShape* shape, float scale = 1.f);
 
 	bool CheckAABB(rEntityBody obj0, rEntityBody obj1);
